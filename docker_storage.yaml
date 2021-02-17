@@ -1,0 +1,62 @@
+---
+- hosts: all
+  vars_prompt:
+    - name: partition
+      prompt: "Enter the partition name: (sda, sdb, sdc, sdd)"
+      private: no
+
+  tasks:
+    - name: verify /dev/docker-vg/docker-pool
+      stat:
+        path: /dev/docker-vg/docker-pool
+      register: docker_vg_status
+
+    - name: delete docker-storage-setup file
+      file:
+        path: /etc/sysconfig/docker-storage-setup
+        state: absent
+      when: docker_vg_status.stat.islink is not defined
+
+    - name: create new file docker-storage-setup
+      file:
+        path: /etc/sysconfig/docker-storage-setup
+        state: touch
+      when: docker_vg_status.stat.islink is not defined
+
+    - name: write configuration to /etc/sysconfig/docker-storage-setup file
+      blockinfile:
+        path: /etc/sysconfig/docker-storage-setup
+        block: |
+          DEVS=/dev/{{ partition }}
+          VG=docker-vg
+          WIPE_SIGNATURES=true
+        when: docker_vg_status.stat.islink is not defined
+
+    - name: stop docker service
+      service:
+        name: docker
+        state: stopped
+      when: docker_vg_status.stat.islink is not defined
+
+    - name: delete docker-storage file
+      file:
+        path: /etc/sysconfig/docker-storage
+        state: absent
+      when: docker_vg_status.stat.islink is not defined
+
+    - name: create docker-storage
+      shell: docker-storage-setup
+      when: docker_vg_status.stat.islink is not defined
+  
+    - name: extend LVM
+      lvol:
+        vg: docker-vg
+        lv: docker-pool
+        size: +100%FREE
+ 
+    - name: start and enable docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
