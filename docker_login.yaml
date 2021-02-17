@@ -1,0 +1,30 @@
+---
+- hosts: nodes
+  vars_prompt:
+    - name: registry
+      prompt: "Enter the name of the registry (without FQDN)"
+      private: no
+    - name: username
+      prompt: "Enter login user name to the registry"
+      private: no
+    - name: password
+      prompt: "Enter login user password"
+      private: no
+
+  tasks:
+  - name: create directory
+    file:
+      path: /etc/docker/certs.d/{{ registry }}.{{ ansible_facts.domain }}:5000
+      state: directory
+  - name: copy certificates
+    shell: 'openssl s_clent --showcerts -coonect  {{ registry }}.{{ ansible_facts.domain }}:5000 </dev/null | openssl x509 -out /etc/docker/certs.d/{{ registry }}.{{ ansible_facts.domain }}\:5000/certificate.crt'
+  - name: restart docker service
+    service:
+      name: docker
+      state: restarted
+  - name: docker login
+    docker_login:
+      registry: '{ registry }}.{{ ansible_facts.domain }}:5000'
+      username: '{{ registry }}'
+      password: '{{ password  }}'
+      reauthorize: yes
