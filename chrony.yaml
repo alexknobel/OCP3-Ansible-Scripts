@@ -1,0 +1,98 @@
+---
+- hosts: localhost
+  name: create secret
+  gather_facts: no
+  tasks:
+    - set_fact: ntp_name="{{ ntp_server }}"
+    - shell: "chronyc keygen 13 SHA256 > /etc/chrony.keys"
+
+- hosts: all
+  gather_facts: no
+  tasks:
+    - copy:
+        src: /etc/chrony.keys
+        dest: /etc/chrony.keys
+
+- hosts: masters
+  name: collect masters info
+  gather_facts: yes
+
+- hosts: all, localhost
+  name: sync time masters
+  tasks:
+    - set_fact:
+        all_masters: ""
+    - name: count masters 1
+      loop: "{{ groups.masters }}"
+      set_fact:
+        all_masters: "{{ all_masters }}server {{ hostvars[item].ansible_facts_fqdn }} iburst key 13\n"
+    - name: delete file
+      file:
+        path: /etc/chrony.conf
+        state: absent
+    - name: write file
+      blockinfile:
+        path: /etc/chrony.conf
+        create: yes
+        marker: "# {mark} ansible chrony block"
+        block: |
+          {{ all_masters }}
+
+          driftfile: /var/lib/chrony/drift
+          makestep: 1.0 -1
+          maxchange: 3900 1 0
+          rtcsync
+          keyfile /etc/chrony.keys
+          logdir /var/log/chrony
+          acquisionport 123
+          log measurements statistics tracking
+     - name: restart service
+       service:
+         name: chronyd
+         state: restarted
+- hosts: masters
+  name: configure masters
+  tasks:
+    - shell: "firewall-cmd --add-service=ntp --permanent"
+    - shell: "firewall-cmd --reload"
+    - set_fact:
+        all_masters: ""
+    - name: count ntp
+      set_fact:
+        all_masters: "server {{ hotstvars['localhost']['ntp_name'] }} iburst\n"
+      when hostvars['localhost']['ntp_name'] != ""
+    - name: count masters 2
+      loop: "{{ groups.masters  }}"
+      set_fact: 
+        all_masters: "{{ all_masters }}peer {{ hostvars[item].ansible_facts.fqdn }} key 13\n"
+     when: hostvars[item].ansible_facts.fqdn != ansible_facts.fqdn
+    - name: delete file
+      file:
+        path: /etc/chrony.conf
+        state: absent
+    - name: write file
+      blockinfile:
+        path: /etc/chrony.conf
+        create: yes
+        marker: "# {mark} ansible chrony block"
+        block: |
+          {{ all_masters }}
+
+          driftfile: /var/lib/chrony/drift
+          makestep: 1.0 -1
+          maxchange: 3900 1 0
+          rtcsync
+          allow {{ ansible_facts.default_ipv4.address }}/24
+          local stratum 10 orphan
+          keyfile /etc/chrony.keys
+          logdir /var/log/chrony
+          log measurements statistics tracking
+      - name: restart service
+        service:
+          name: chronyd
+          state: restarted
+  
+
+
+
+
