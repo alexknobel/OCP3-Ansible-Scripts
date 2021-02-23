@@ -1,0 +1,58 @@
+---
+- hosts: all, localhost
+  gather_facts: no
+  tasks:
+  - name: install for all hosts
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+    - lsof
+    - container-selinux
+    - vim
+    - telnet
+    - chrony
+    - NetworkManager
+    - bind-utils
+    - bach-completeion
+
+- hosts: nodes, localhost
+  gather_facts: no
+  tasks:
+  - name: install for all hosts with docker
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+    - openshift-ansible
+    - yum-utils
+    - docker-1.13.1
+    - git
+    - net-tools
+    - bridge-utils
+    - atomic
+
+- hosts: nodes
+  gather_facts: no
+  tasks:
+  - name: install for all openshift nodes
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+    - kexec-tools
+    - sos
+    - psacct
+    - iptables-services
+
+- hosts: lb
+  gather_facts: no
+  tasks:
+  - name: install for load balancers
+    yum:
+      name: "{{ item }}"
+      state: present
+    loop:
+    - haproxy
+    - keepalived
+
