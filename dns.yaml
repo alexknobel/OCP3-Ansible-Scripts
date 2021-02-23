@@ -1,7 +1,18 @@
 ---
-- hosts: all
+- hosts: all,localhost
   tasks:
-  - name: setup dns servers on all hosts
-    copy:
-      src: /etc/resolv.conf
-      dest: /etc/resolv.conf
+  - set_fact:
+       dns_string: ""
+
+  - loop: "{{ dns_servers }}"
+    set_fact:
+      dns_string: "{{ dns_string }} {{ item }}"
+    
+  - name: setup dns servers
+    shell: 'nmcli con mod ens192 ipv4.dns "{{ dns_string }}"'
+
+  - name: restart Network Manager service
+    service:
+      name: NetworkManager
+      state: restarted
+      enabled: yes
