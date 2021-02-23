@@ -1,0 +1,72 @@
+---
+- hosts: nodes, localhost
+  tasks:
+  - set_fact:
+      additional_registries_line: ""
+      inecure_registries_line: ""
+      blocker_registries_line: ""
+
+  - loop: "{{ openshift_docker_additional_registries | default([]) }}"
+    set_fact:
+      additional_registries_line: "{{ additional_registries_line }}, '{{ item }}'"
+
+  - loop: "{{ openshift_docker_insecure_registries | default([]) }}"
+    set_fact:
+      inecure_registries_line: "{{ insecure_registries_line }}, '{{ item }}'"
+
+  - loop: "{{ openshift_docker_blocked_registries | default([]) }}"
+    set_fact:
+      blocked_registries_line: "{{ blocked_registries_line }}, '{{ item }}'"
+
+  - name: delete registries.conf
+    shell: echo '' > /etc/containers/registries.conf
+
+  - name: fix registries.conf
+    blockinfile:
+      path: /etc/containers/registries.conf
+      insertbefore: BOF
+      block: |
+        [registries.search]
+        registries = [ {{ additional_registries_line | regex_replace('^, ','') }} ]
+
+        [registries.insecure]
+        registries = [ {{ insecure_registries_line | regex_replace('^, ','') }} ]
+
+        [registries.block]
+        registries = [ {{ blocked_registries_line | regex_replace('^, ','') }} ]
+
+   - name: create docker-storage
+     shell: docker-storage-setup
+ 
+   - set_fact:
+       another_additional_registries: []
+
+   - name: create registries array with saving certs
+     loop: "{{ openshift_additional_registries_credentials | default([]) }}"
+     set_fact:
+       another_additional_registries: "{{ another_additional_registries  + [item.host] }}"
+
+   - name: create directory
+     loop: "{{ another_additional_registries + (openshift_docker_additional_registries | default([])) ) | unique }}"
+     file:
+       path: "/etc/docker/certs.d/{{ item }}"
+       state: directory
+
+   - name: copy certificates
+     loop: "{{ another_additional_registries + (openshift_docker_additional_registries | default([])) ) | unique }}"
+     shell: 'openssl s_client -showcerts -connect {{ item if item | regex_search(":") else item+":443" }} < /dev/null | openssl x509 -out /etc/docker/certs.d/{{ item }}/docker-registry-ssl.crt'
+
+   - name: restart docker service
+     service:
+       name: docker
+       state: restarted
+       enabled: true
+
+   - name: docker login
+     loop: "{{ openshift_additional_registries_credentials | default([]) }}"
+     docker_login:
+       registry: '{{ item.host }}'
+       username: '{{ item.user }}'
+       password: '{{ item.password }}'
+       reauthorize: yes
+
